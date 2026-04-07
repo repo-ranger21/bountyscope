@@ -1,0 +1,252 @@
+rules:
+
+  # ── Rule 1: wp_ajax_ handler with no nonce check in same file ──────────────
+  - id: wordpress-ajax-handler-missing-nonce
+    patterns:
+      - pattern: add_action('wp_ajax_...', $FUNC);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+    message: |
+      CSRF: wp_ajax_ handler registered without check_ajax_referer() in scope.
+      Function '$FUNC' handles authenticated AJAX requests but no nonce verification
+      was detected. An attacker can forge requests on behalf of any logged-in user.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: csrf
+      category: security
+      confidence: HIGH
+      wordfence_type: csrf
+
+  # ── Rule 2: wp_ajax_nopriv_ handler with no nonce ──────────────────────────
+  - id: wordpress-ajax-nopriv-missing-nonce
+    patterns:
+      - pattern: add_action('wp_ajax_nopriv_...', $FUNC);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+    message: |
+      CSRF: Unauthenticated wp_ajax_nopriv_ handler missing nonce verification.
+      This handler is accessible to ALL visitors including unauthenticated users.
+      Severity is elevated if handler performs state changes.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "9.8"
+      vuln_class: csrf_unauth
+      category: security
+      confidence: HIGH
+      wordfence_type: csrf
+
+  # ── Rule 3: admin_post_ handler with no nonce ───────────────────────────────
+  - id: wordpress-admin-post-missing-nonce
+    patterns:
+      - pattern: add_action('admin_post_...', $FUNC);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_admin_referer(...);
+          ...
+    message: |
+      CSRF: admin_post_ handler registered without check_admin_referer().
+      Admin form submissions processed without origin verification.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: csrf
+      category: security
+      confidence: HIGH
+      wordfence_type: csrf
+
+  # ── Rule 4: update_option with $_POST data and no nonce ────────────────────
+  - id: wordpress-update-option-no-nonce
+    patterns:
+      - pattern: update_option($KEY, $_POST[$VAL]);
+    message: |
+      CSRF → Arbitrary Options Update: update_option() called directly with
+      $_POST data. If no nonce verification precedes this call, an attacker
+      can update arbitrary WordPress options via a forged request.
+      This is a HIGH THREAT vulnerability class (25 install threshold).
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "9.8"
+      vuln_class: arbitrary_options_update
+      category: security
+      confidence: HIGH
+      wordfence_type: high_threat
+
+  # ── Rule 5: Missing capability check on AJAX handler ───────────────────────
+  - id: wordpress-ajax-missing-capability-check
+    patterns:
+      - pattern: |
+          function $FUNC(...) {
+            ...
+            $_POST[...];
+            ...
+          }
+      - pattern-not-inside: |
+          function $FUNC(...) {
+            ...
+            current_user_can(...);
+            ...
+          }
+      - pattern-not-inside: |
+          function $FUNC(...) {
+            ...
+            check_ajax_referer(...);
+            ...
+          }
+    message: |
+      Missing Authorization: Function '$FUNC' processes $_POST data without
+      current_user_can() or nonce verification. May allow unauthorized state
+      changes by any authenticated user regardless of role.
+    languages: [php]
+    severity: WARNING
+    metadata:
+      cwe: CWE-862
+      cvss: "8.8"
+      vuln_class: missing_authorization
+      category: security
+      confidence: MEDIUM
+      wordfence_type: missing_auth
+
+  # ── Rule 6: wp_insert_user / wp_create_user without nonce ──────────────────
+  - id: wordpress-user-creation-missing-nonce
+    patterns:
+      - pattern: wp_insert_user($DATA);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_admin_referer(...);
+          ...
+    message: |
+      CSRF → Privilege Escalation: wp_insert_user() called without nonce
+      verification. An attacker can forge a request to create arbitrary
+      administrator accounts. CVSS 8.8+ High Threat classification.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: privilege_escalation
+      category: security
+      confidence: HIGH
+      wordfence_type: high_threat
+
+  # ── Rule 7: wp_set_password without nonce ──────────────────────────────────
+  - id: wordpress-set-password-missing-nonce
+    patterns:
+      - pattern: wp_set_password($PASS, $ID);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_admin_referer(...);
+          ...
+    message: |
+      CSRF → Account Takeover: wp_set_password() called without nonce
+      verification. Forged requests can reset any user's password.
+      Maps to the LatePoint CVE pattern (Account Takeover via CSRF).
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: account_takeover
+      category: security
+      confidence: HIGH
+      wordfence_type: high_threat
+
+  # ── Rule 8: File operations without nonce ──────────────────────────────────
+  - id: wordpress-file-deletion-missing-nonce
+    patterns:
+      - pattern: unlink($PATH);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_admin_referer(...);
+          ...
+      - pattern-not-inside: |
+          <?php
+          ...
+          wp_verify_nonce(...);
+          ...
+    message: |
+      CSRF → Arbitrary File Deletion: unlink() called without nonce
+      verification in scope. Forged requests may delete arbitrary files
+      on the server. High Threat classification.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: arbitrary_file_deletion
+      category: security
+      confidence: MEDIUM
+      wordfence_type: high_threat
+
+  # ── Rule 9: Role/capability assignment without auth check ──────────────────
+  - id: wordpress-role-assignment-missing-auth
+    patterns:
+      - pattern: $USER->add_role($ROLE);
+      - pattern-not-inside: |
+          <?php
+          ...
+          current_user_can(...);
+          ...
+    message: |
+      Missing Authorization → Privilege Escalation: add_role() called without
+      current_user_can() check. Any authenticated user may be able to escalate
+      their own privileges.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-862
+      cvss: "8.8"
+      vuln_class: privilege_escalation
+      category: security
+      confidence: MEDIUM
+      wordfence_type: high_threat
+
+  # ── Rule 10: Direct $_POST to wpdb query ───────────────────────────────────
+  - id: wordpress-sqli-post-to-query
+    patterns:
+      - pattern: $wpdb->query("..." . $_POST[$VAR] . "...");
+    message: |
+      SQL Injection: Unsanitized $_POST data concatenated directly into
+      wpdb->query(). Use $wpdb->prepare() with parameterized queries.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-89
+      cvss: "9.8"
+      vuln_class: sql_injection
+      category: security
+      confidence: HIGH
+      wordfence_type: common_dangerous

@@ -1,0 +1,115 @@
+rules:
+
+  # ── Rule 1: REST API endpoint missing permission_callback ──────────────────
+  - id: wordpress-rest-missing-permission-callback
+    patterns:
+      - pattern: |
+          register_rest_route($NS, $ROUTE, array(..., 'callback' => $CB, ...));
+      - pattern-not-inside: |
+          register_rest_route($NS, $ROUTE, array(..., 'permission_callback' => ..., ...));
+    message: |
+      Missing Authorization: REST API route registered without permission_callback.
+      Any unauthenticated user can call this endpoint. Set permission_callback
+      to '__return_true' only if truly public, otherwise use current_user_can().
+    languages: [php]
+    severity: ERROR
+    metadata:
+      cwe: CWE-862
+      cvss: "9.8"
+      vuln_class: missing_authorization
+      category: security
+      confidence: HIGH
+      wordfence_type: missing_auth
+
+  # ── Rule 2: REST endpoint with __return_true permission ────────────────────
+  - id: wordpress-rest-permission-return-true
+    pattern: |
+      register_rest_route($NS, $ROUTE, array(...,
+        'permission_callback' => '__return_true', ...));
+    message: |
+      Potential Missing Authorization: REST endpoint uses '__return_true' as
+      permission_callback making it fully public. Verify this endpoint does
+      not expose sensitive data or perform privileged operations.
+    languages: [php]
+    severity: WARNING
+    metadata:
+      cwe: CWE-862
+      cvss: "7.5"
+      vuln_class: missing_authorization
+      category: security
+      confidence: LOW
+      wordfence_type: missing_auth
+
+  # ── Rule 3: AJAX handler with current_user_can but no nonce ────────────────
+  - id: wordpress-capability-without-nonce
+    patterns:
+      - pattern: |
+          function $FUNC(...) {
+            ...
+            current_user_can($CAP);
+            ...
+            update_option(...);
+            ...
+          }
+      - pattern-not-inside: |
+          function $FUNC(...) {
+            ...
+            check_ajax_referer(...);
+            ...
+          }
+      - pattern-not-inside: |
+          function $FUNC(...) {
+            ...
+            wp_verify_nonce(...);
+            ...
+          }
+    message: |
+      Partial CSRF Protection: current_user_can() check present but no nonce
+      verification. Capability checks confirm role but not request origin.
+      A CSRF attack can still forge requests from authenticated users with
+      the required capability.
+    languages: [php]
+    severity: WARNING
+    metadata:
+      cwe: CWE-352
+      cvss: "8.8"
+      vuln_class: csrf
+      category: security
+      confidence: MEDIUM
+      wordfence_type: csrf
+
+  # ── Rule 4: Options API write with no preceding auth check ─────────────────
+  - id: wordpress-options-write-no-auth
+    patterns:
+      - pattern: update_option($OPT, $VAL);
+      - pattern-not-inside: |
+          <?php
+          ...
+          current_user_can(...);
+          ...
+          update_option($OPT, $VAL);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_ajax_referer(...);
+          ...
+          update_option($OPT, $VAL);
+      - pattern-not-inside: |
+          <?php
+          ...
+          check_admin_referer(...);
+          ...
+          update_option($OPT, $VAL);
+    message: |
+      Potential Arbitrary Options Update: update_option() called without
+      preceding authorization or nonce check in file scope. Verify this
+      call is gated by capability and nonce verification upstream.
+    languages: [php]
+    severity: WARNING
+    metadata:
+      cwe: CWE-862
+      cvss: "8.8"
+      vuln_class: arbitrary_options_update
+      category: security
+      confidence: LOW
+      wordfence_type: high_threat
